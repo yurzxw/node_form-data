@@ -46,7 +46,7 @@ function createServer() {
         const expense = {
           date: data.date,
           title: data.title,
-          amount: parseFloat(data.amount),
+          amount: data.amount,
         };
 
         const dbPath = path.join(__dirname, '../db/expense.json');
