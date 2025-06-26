@@ -8,7 +8,7 @@ const path = require('path');
 function createServer() {
   const server = http.createServer(async (req, res) => {
     if (req.url === '/') {
-      if (req.method === 'GET') {
+      if (req.method === 'GET' && req.url === '') {
         res.setHeader('Content-type', 'text/html');
 
         const filePath = path.join(__dirname, 'form.html');
@@ -57,16 +57,22 @@ function createServer() {
       const { title, amount, date } = data;
 
       if (!title || !amount || !date) {
-        res.statusCode = 404;
+        res.statusCode = 400;
 
         res.end('Not valid form!');
 
         return;
       }
 
-      fs.writeFileSync('db/expense.json', jsonData, () => {
+      const dbPath = path.join(__dirname, 'db', 'expense.json');
+
+      const writeStream = fs.createWriteStream(dbPath);
+
+      writeStream.write(jsonData);
+
+      fs.writeFileSync('db/expense.json', jsonData, (e) => {
         res.statusCode = 500;
-        res.end('Failed to write expense.json');
+        res.end(e);
       });
 
       res.setHeader('Content-type', 'application/json');
