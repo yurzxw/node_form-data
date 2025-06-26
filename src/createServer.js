@@ -2,87 +2,84 @@
 
 const http = require('http');
 const fs = require('fs');
+const querystring = require('querystring');
 const path = require('path');
 
 function createServer() {
-  return http.createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/') {
-      const formPath = path.join(__dirname, 'form.html');
+  const server = http.createServer(async (req, res) => {
+    if (req.url === '/') {
+      if (req.method === 'GET') {
+        res.setHeader('Content-type', 'text/html');
 
-      fs.readFile(formPath, (err, data) => {
-        if (err) {
-          res.writeHead(500);
+        const filePath = path.join(__dirname, 'form.html');
+        const file = fs.createReadStream(filePath);
 
-          return res.end('Error loading form');
-        }
+        file
+          .on('error', () => {
+            res.statusCode = 500;
+            res.end('Failed to read index html');
+          })
+          .pipe(res);
 
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(data);
-      });
-    } else if (req.method === 'POST' && req.url === '/submit-expense') {
-      let body = '';
+        return;
+      }
 
-      req.on('data', (chunk) => {
-        body += chunk.toString();
-      });
+      res.statusCode = 405;
+      res.end('Method not allowed');
 
-      req.on('end', () => {
-        let data;
-
-        try {
-          data = JSON.parse(body);
-        } catch (err) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-
-          return res.end(JSON.stringify({ error: 'Invalid JSON' }));
-        }
-
-        if (!data.date || !data.title || !data.amount) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-
-          return res.end(JSON.stringify({ error: 'Missing required fields' }));
-        }
-
-        const expense = {
-          date: data.date,
-          title: data.title,
-          amount: data.amount,
-        };
-
-        const dbPath = path.join(__dirname, '../db/expense.json');
-
-        fs.readFile(dbPath, 'utf8', (err, fileData) => {
-          let expenses = [];
-
-          if (!err && fileData) {
-            try {
-              const parsed = JSON.parse(fileData);
-
-              expenses = Array.isArray(parsed) ? parsed : [];
-            } catch (e) {
-              expenses = [];
-            }
-          }
-
-          expenses.push(expense);
-
-          fs.writeFile(dbPath, JSON.stringify(expenses, null, 2), (errr) => {
-            if (errr) {
-              res.writeHead(500);
-
-              return res.end('⚠️ Failed to save data');
-            }
-
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(expense));
-          });
-        });
-      });
-    } else {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Not Found' }));
+      return;
     }
+
+    if (req.url === '/add-expense') {
+      if (req.method !== 'POST') {
+        res.statusCode = 405;
+        res.end('Method not allowed!');
+
+        return;
+      }
+
+      const chunks = [];
+
+      for await (const chunk of req) {
+        chunks.push(chunk);
+      }
+
+      const rawData = Buffer.concat(chunks).toString();
+      let data;
+
+      if (req.headers['content-type'] === 'application/json') {
+        data = JSON.parse(rawData);
+      } else {
+        data = querystring.parse(rawData);
+      }
+
+      const jsonData = JSON.stringify(data);
+      const { title, amount, date } = data;
+
+      if (!title || !amount || !date) {
+        res.statusCode = 404;
+
+        res.end('Not valid form!');
+
+        return;
+      }
+
+      fs.writeFileSync('db/expense.json', jsonData, () => {
+        res.statusCode = 500;
+        res.end('Failed to write expense.json');
+      });
+
+      res.setHeader('Content-type', 'application/json');
+      res.end(jsonData);
+
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end('Not found');
   });
+
+  return server;
 }
 
 module.exports = {
